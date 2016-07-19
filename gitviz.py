@@ -9,7 +9,7 @@
 # This software is provided under WTFPL license: http://www.wtfpl.net/.
 
 from github import Github
-from PIL import Image
+from PIL import Image, ImageFont, ImageDraw
 import ssl
 import urllib2
 import re
@@ -20,12 +20,18 @@ import re
 
 REPOSITORY_NAME = "drummyfish/bombman"
 FILE_NAME = "bombman.py"
-USERNAME = ""  # add your github username and password here to get bigger API request limit!
+USERNAME = ""            # add your github username and password here to get bigger API request limit!
 PASSWORD = ""
-LANGUAGE = "python"   # for very simple syntax highlight, possible values: "none", "python", "c++"
+LANGUAGE = "python"      # for very simple syntax highlight, possible values: "none", "python", "c++"
 IMAGE_RESOLUTION = (1366,768)
-COLUMN_WIDTH = 200
-MAX_COMMITS = 1000
+INCLUDE_INFO = True      # text info
+FONT = "CutiveMono-Regular.ttf"
+INFO_POSITION = (1000,670)
+FONT_SIZE = 18
+FONT_COLOR = (0,0,0)
+LINE_SPACE = 5
+COLUMN_WIDTH = 250
+MAX_COMMITS = 10
 
 NORMAL_COLOR = (0,0,0)
 KEYWORD_COLOR = (200,0,0)
@@ -136,6 +142,9 @@ LOAD_ANEW = 2                  # = download the file from raw url if there was m
 # return list of changes in format: (line number, added/deleted, line text, is last change in commit, commit_number)
  
 def patch_to_changes(patch_string, commit_number):
+  if patch_string == None:
+    return []
+
   result = []
  
   lines = patch_string.split("\n")
@@ -221,8 +230,7 @@ def highlight_line(line_string, language_string):
 
   return result
 
-def save_file_lines_as_image(lines, filename, resolution, commit_number, total_commits):
-  print("saving image " + filename)
+def save_file_lines_as_image(lines, filename, resolution, commit_number=0, total_commits=0, commit_message="", font=None):
   image = Image.new("RGB",resolution,"white")
  
   pixels = image.load() # create the pixel map
@@ -237,22 +245,27 @@ def save_file_lines_as_image(lines, filename, resolution, commit_number, total_c
       character_brightness = 0
       color = character_colors[i]
 
-      x = i + COLUMN_WIDTH * (j / (resolution[1] - 1))
-      y = j % (resolution[1] - 1)
+      x = i + COLUMN_WIDTH * (j / resolution[1])
+      y = j % (resolution[1])
  
       try:
         pixels[x,y] = color
       except Exception:
         pass
 
-  for i in range(total_commits): # progress bar
-    color = (255,0,0) if i < commit_number else (100,100,100)
-    pixels[i,resolution[1] - 1] = color        
+  if font != None:    # render info text
+    draw = ImageDraw.Draw(image)
+
+    x, y = INFO_POSITION
+    draw.text((x,y),"commit " + str(commit_number) + "/" + str(total_commits) + ":",FONT_COLOR,font=font)
+    y += FONT_SIZE + LINE_SPACE
+    draw.text((x,y),commit_message,FONT_COLOR,font=font)
+    y += FONT_SIZE + LINE_SPACE
+    draw.text((x,y),str(len(lines)) + " lines",FONT_COLOR,font=font)
 
   image.save(filename,"PNG")
  
 def save_file_lines_as_file(lines, filename):
-  print("saving file " + filename)
   output_file = open(filename,"w")
  
   for line in lines:
@@ -260,8 +273,15 @@ def save_file_lines_as_file(lines, filename):
  
   output_file.close()
 
+def load_file_lines(filename):
+  with open (filename,"r") as input_file:
+    return input_file.read().split("\n")
+
 #============================================
 # main:
+
+if INCLUDE_INFO:
+  font = ImageFont.truetype(FONT,FONT_SIZE)
 
 github = Github(USERNAME,PASSWORD)
 repository = github.get_repo(REPOSITORY_NAME)
@@ -272,26 +292,34 @@ commit_number = 0
 try_again_counter = 0
  
 change_list = []
+commit_messages = []
  
 was_merge = False
  
 while commit_number < len(commits):
+  if max_commits < 0:
+    break
+
   try:
-    print("loading commit " + str(commit_number + 1))
     commit = commits[-1 * (commit_number + 1)]
- 
-    print("message: " + commit.commit.message)
- 
+
     if len(commit.parents) > 1:   # was merge => load the file from raw url next time
       was_merge = True
-      print("Merge commit")
+
+    commit_messages.append(commit.commit.message)
+
+    print("loaded " + ("merge " if was_merge else "")  + "commit " + str(commit_number + 1) + ":" + commit_messages[-1])
  
     files = commit.files
  
     commit_number += 1
  
+    file_found = False
+
     for one_file in files:
       if one_file.filename == FILE_NAME:
+        file_found = True
+
         if was_merge:
           was_merge = False
           change_list += [(0,LOAD_ANEW,one_file.raw_url,True,commit_number)]
@@ -299,12 +327,14 @@ while commit_number < len(commits):
           patch = one_file.patch
           change_list += patch_to_changes(patch,commit_number)
         
+        print("file found in commit, current number of changes: " + str(len(change_list)))
+
         break
- 
+
+    if not file_found:
+      print("file not found in commit")
+
     max_commits -= 1
- 
-    if max_commits < 0:
-      break
  
     try_again_counter = 5
   except ssl.SSLError:
@@ -334,12 +364,11 @@ for change in change_list:
     print(e)
     print("some error happened, but going on...")
  
-  print(str(int((change_number + 1) / float(len(change_list)) * 100)) + "%")
+  print(str(int((change_number + 1) / float(len(change_list)) * 100)) + " %" + (", commit " + str(change[4]) + " completed" if change[3] else ""))
  
-  if change[3]:  # last change in commit
-    print("commit done")
- 
-  save_file_lines_as_image(file_lines,"images/out" + str(change_number).zfill(5) + ".png",IMAGE_RESOLUTION,change[4],len(commits))
+  save_file_lines_as_image(file_lines,"images/out" + str(change_number).zfill(5) + ".png",IMAGE_RESOLUTION,change[4],change_list[-1][4],commit_messages[change[4]],font)
   change_number += 1
 
+print("saving final file for check...")
 save_file_lines_as_file(file_lines,"final file for check.txt")
+print("done")
