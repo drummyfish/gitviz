@@ -23,19 +23,20 @@ FILE_NAME = "bombman.py"
 USERNAME = ""            # add your github username and password here to get bigger API request limit!
 PASSWORD = ""
 LANGUAGE = "python"      # for very simple syntax highlight, possible values: "none", "python", "c++"
-IMAGE_RESOLUTION = (1366,768)
+IMAGE_RESOLUTION = (480,640)
 INCLUDE_INFO = True      # text info
 FONT = "CutiveMono-Regular.ttf"
-INFO_POSITION = (1000,670)
+INFO_POSITION = (10,540)
 FONT_SIZE = 18
 FONT_COLOR = (0,0,0)
 LINE_SPACE = 5
 COLUMN_WIDTH = 250
-MAX_COMMITS = 10
+MAX_COMMITS = 100
 
 NORMAL_COLOR = (0,0,0)
 KEYWORD_COLOR = (200,0,0)
 COMMENT_COLOR = (97,85,201)
+TAB_REPLACE = "    "     # what tabs will be replaced with
 
 #======================================================================
 
@@ -236,7 +237,7 @@ def save_file_lines_as_image(lines, filename, resolution, commit_number=0, total
   pixels = image.load() # create the pixel map
  
   for j in range(len(lines)):
-    line = lines[j]
+    line = replace_tabs(lines[j])
     character_colors = highlight_line(line,LANGUAGE) 
 
     for i in range(len(line)):
@@ -272,6 +273,17 @@ def save_file_lines_as_file(lines, filename):
     output_file.write(line.encode("utf-8") + "\n")
  
   output_file.close()
+
+def replace_tabs(input_string):
+  result = ""
+
+  for char in input_string:
+    if char == "\t":
+      result += TAB_REPLACE;
+    else:
+      result += char 
+   
+  return result
 
 def load_file_lines(filename):
   with open (filename,"r") as input_file:
@@ -362,11 +374,16 @@ for change in change_list:
  
   except Exception as e:
     print(e)
-    print("some error happened, but going on...")
+    print("some error happened when applying changes, but going on...")
  
   print(str(int((change_number + 1) / float(len(change_list)) * 100)) + " %" + (", commit " + str(change[4]) + " completed" if change[3] else ""))
  
-  save_file_lines_as_image(file_lines,"images/out" + str(change_number).zfill(5) + ".png",IMAGE_RESOLUTION,change[4],change_list[-1][4],commit_messages[change[4]],font)
+  try:
+    save_file_lines_as_image(file_lines,"images/out" + str(change_number).zfill(5) + ".png",IMAGE_RESOLUTION,change[4],change_list[-1][4],commit_messages[change[4]],font)
+  except Exception as e:
+    print(e)
+    print("some error happened when saving image file, but going on...") 
+
   change_number += 1
 
 print("saving final file for check...")
