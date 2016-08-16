@@ -13,6 +13,7 @@ from PIL import Image, ImageFont, ImageDraw
 import ssl
 import urllib2
 import re
+import os
 
 #======================================================================
 
@@ -246,7 +247,7 @@ def save_file_lines_as_image(lines, filename, resolution, commit_number=0, total
       character_brightness = 0
       color = character_colors[i]
 
-      x = i + COLUMN_WIDTH * (j / resolution[1])
+      x = i + COLUMN_WIDTH * (j // resolution[1])
       y = j % (resolution[1])
  
       try:
@@ -361,6 +362,11 @@ file_lines = []  # start with file with one empty line
  
 change_number = 0
 
+output_directory_name = "images"
+
+if not os.path.exists(output_directory_name):
+    os.makedirs(output_directory_name)
+
 for change in change_list:
   try:
     if change[1] == LINE_ADDED:
@@ -379,7 +385,7 @@ for change in change_list:
   print(str(int((change_number + 1) / float(len(change_list)) * 100)) + " %" + (", commit " + str(change[4]) + " completed" if change[3] else ""))
  
   try:
-    save_file_lines_as_image(file_lines,"images/out" + str(change_number).zfill(5) + ".png",IMAGE_RESOLUTION,change[4],change_list[-1][4],commit_messages[change[4]],font)
+    save_file_lines_as_image(file_lines,output_directory_name + "/out" + str(change_number).zfill(5) + ".png",IMAGE_RESOLUTION,change[4],change_list[-1][4],commit_messages[change[4]],font)
   except Exception as e:
     print(e)
     print("some error happened when saving image file, but going on...") 
